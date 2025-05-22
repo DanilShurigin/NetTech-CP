@@ -1,4 +1,5 @@
 import logging
+import logging.config
 
 
 def setup_logger(log_file: str, log_level: str = "info") -> logging.Logger:

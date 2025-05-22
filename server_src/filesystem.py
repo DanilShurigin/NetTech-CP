@@ -131,6 +131,7 @@ def get_filesystem(files_dir: str = None) -> FileSystem:
     Returns:
         UserDatabase: База данных пользователей
     """
+    global _filesystem_instance
     if _filesystem_instance is None and files_dir is not None:
         _filesystem_instance = FileSystem(files_dir)
     elif _filesystem_instance is None and files_dir is None:

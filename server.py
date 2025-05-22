@@ -1,14 +1,14 @@
 import sys
 import threading
 
-from src.config import load_config
-from src.logger import setup_logger
-from src.db import get_user_database
-from src.filesystem import get_filesystem
-from src.ui import get_server_ui
-from src.listener import SrvWorkSocket
-from src.server_exceptions import ServerException
-from src.connection_handler import ConnectionHandler
+from server_src.config import load_config
+from server_src.logger import setup_logger
+from server_src.db import get_user_database
+from server_src.filesystem import get_filesystem
+from server_src.ui import get_server_ui
+from server_src.listener import SrvWorkSocket
+from server_src.server_exceptions import ServerException
+from server_src.connection_handler import ConnectionHandler
 
 
 def main() -> None:
@@ -16,11 +16,12 @@ def main() -> None:
     print()
     get_server_ui().print()
     print("\nPress Ctrl+C to exit\n")
-    sys.stdout.write('\x1b[2A') # Перемещаем курсор на 2 строки вверх
+    sys.stdout.write('\x1b[3A') # Перемещаем курсор на 3 строки вверх
 
     interface_thread = threading.Thread(
         target=get_server_ui().run,
-        args=(1),
+        args=(1,),
+        daemon=True,
     )
     interface_thread.start()
 
@@ -57,6 +58,7 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         logger.info("Server shutdown initiated by keyboard interrupt")
+        print("\n\n\n")
     except:
         logger.critical("Server fatal error", exc_info=True)
 

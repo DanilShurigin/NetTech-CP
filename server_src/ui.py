@@ -76,7 +76,7 @@ class ServerUI:
           + f"║{'Address':^17}║{'Port':^10}║{'User':^12}║{'File Transfer':^40}║\n"
           + f"╠{'═'*17}╬{'═'*10}╬{'═'*12}╬{'═'*40}╣\n"
           + f"╟{'╌'*17}╫{'╌'*10}╫{'╌'*12}╫{'╌'*40}╢\n".join([f"║{ServerUI._ip_out(client['address']):^17}║{ServerUI._port_out(client['port']):^10}║{ServerUI._user_out(client['user']):^12}║{ServerUI._file_out(client['file'], client["progress"]) if client['file'] else ' No active transitions':<40}║\n" for client in clients])
-          + f"╚{'═'*17}╩{'═'*10}╩{'═'*12}╩{'═'*40}╝"
+          + f"╚{'═'*17}╩{'═'*10}╩{'═'*12}╩{'═'*40}╝\n"
         )
     
     def _clear_previous_output(self) -> None:
@@ -95,7 +95,7 @@ class ServerUI:
         
         self._clear_previous_output()
         # Пересчитываем высоту таблицы
-        self.table_height = 6 + (2 * len(clients) - 1 if len(clients) > 0 else 0)
+        self.table_height = 6# + ((2 * len(clients) - 1) if len(clients) > 0 else 0)
         # Выводим новую таблицу
         sys.stdout.write(self._create_output(clients.values()))
         sys.stdout.flush()
@@ -135,6 +135,7 @@ _server_ui_instance = None
 
 def get_server_ui() -> ServerUI:
     """Получить объект интерфейса сервера"""
+    global _server_ui_instance
     if _server_ui_instance is None:
         _server_ui_instance = ServerUI()
     

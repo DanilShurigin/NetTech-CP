@@ -5,9 +5,10 @@ import uuid
 import atomics
 import os
 
-from db import get_user_database
-from filesystem import get_filesystem
-from ui import get_server_ui
+from .db import get_user_database
+from .filesystem import get_filesystem
+from .ui import get_server_ui
+
 from lib.protocol import Protocol, Message, MessageType, ProtocolException
 from lib.protocol import (
     read_connection_msg,
@@ -40,17 +41,17 @@ class ConnectionHandler(threading.Thread):
     """
 
     def __init__(
-        self, conn_socket: socket.socket, conn_addr: socket._RetAddress
+        self, conn_socket: socket.socket, conn_addr: tuple[str, int]
     ) -> None:
         """
         Инициализировать обработчик.
 
         Args:
             conn_socket (socket.socket): Сокет, через который установлено соединение с клиентом.
-            conn_addr (socket._RetAddress): Удаленный адрес клиента
+            conn_addr (tuple[str, int]): Удаленный адрес клиента
         """
         # Инициализация потока
-        super().__init__()
+        super().__init__(daemon=True)
 
         self._conn_socket = conn_socket
         self._conn_addr = conn_addr

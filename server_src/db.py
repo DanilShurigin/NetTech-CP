@@ -18,7 +18,7 @@ class UserDatabase:
         self._db_path = db_path
         self.logger = logging.getLogger("server.users_db")
         self._init_db()
-        self.logger.info("User database started", extra={"db_file", db_path})
+        self.logger.info("User database started", extra={"db_file": db_path})
 
     def _init_db(self) -> None:
         """
@@ -187,6 +187,7 @@ def get_user_database(db_path: str = None) -> UserDatabase:
     Returns:
         UserDatabase: База данных пользователей
     """
+    global _user_db_instance
     if _user_db_instance is None and db_path is not None:
         _user_db_instance = UserDatabase(db_path)
     elif _user_db_instance is None and db_path is None:

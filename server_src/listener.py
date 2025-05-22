@@ -31,7 +31,7 @@ class SrvWorkSocket(socket.socket):
             extra={"host": self._host, "port": self._port},
         )
 
-    def accept(self) -> tuple[socket.socket, socket._RetAddress]:
+    def accept(self) -> tuple[socket.socket, tuple[str, int]]:
         """
         Принять входящий запрос на соединение.
         """
