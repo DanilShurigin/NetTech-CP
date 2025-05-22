@@ -1,6 +1,7 @@
 from src.config import load_config
 from src.logger import setup_logger
 from src.db import get_user_database
+from src.filesystem import get_filesystem
 from src.listener import SrvWorkSocket
 from src.server_exceptions import ServerException
 from src.connection_handler import ConnectionHandler
@@ -29,6 +30,7 @@ if __name__ == "__main__":
     logger = setup_logger(log_file=config.log, log_level=config.log_level)
     # Инициализация компонентов сервера
     users_db = get_user_database(config.db)
+    srv_filesystem = get_filesystem(config.shared_folder)
     srv_socket = SrvWorkSocket("127.0.0.1", config.local_port)
 
     logger.info("Server initialized")
