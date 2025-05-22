@@ -16,7 +16,7 @@ class UserDatabase:
             db_path: Путь к файлу БД.
         """
         self._db_path = db_path
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("server.users_db")
         self._init_db()
         self.logger.info("User database started", extra={"db_file", db_path})
 
@@ -173,3 +173,23 @@ class UserDatabase:
             self.logger.error("Failed to select password hash", {"login": login}, exc_info=True)
             return None
 
+
+_user_db_instance = None
+
+
+def get_user_database(db_path: str = None) -> UserDatabase:
+    """
+    Вернуть объект базы данных пользователей.
+
+    Args:
+        db_path (str): Путь к файлу БД.
+
+    Returns:
+        UserDatabase: База данных пользователей
+    """
+    if _user_db_instance is None and db_path is not None:
+        _user_db_instance = UserDatabase(db_path)
+    elif _user_db_instance is None and db_path is None:
+        raise RuntimeError("UserDatabase yet not initialized")
+    
+    return _user_db_instance
