@@ -7,6 +7,7 @@ import os
 
 from db import get_user_database
 from filesystem import get_filesystem
+from ui import get_server_ui
 from lib.protocol import Protocol, Message, MessageType, ProtocolException
 from lib.protocol import (
     read_connection_msg,
@@ -94,6 +95,9 @@ class ConnectionHandler(threading.Thread):
         Запустить обработку потока.
         """
         try:
+            # Добавляем клиента в таблицу
+            get_server_ui().add_client(self._id.bytes, self._conn_addr, "anonymous")
+
             # Ожидаем получение сообщения CONN с нулевым полем conn_id
             message = None
             try:
@@ -206,6 +210,7 @@ class ConnectionHandler(threading.Thread):
             del self._target, self._args, self._kwargs
 
             self._conn_socket.close()
+            get_server_ui().remove_client(self._id.bytes)
             threads_counter.dec()
 
             logger.info("Connection closed", extra={"UUID": self._id})
@@ -223,6 +228,21 @@ class ConnectionHandler(threading.Thread):
             logger.info(
                 "User '%s' requested registration", login, extra={"UUID": self._id}
             )
+
+            # Запрещена регистрация для пользователей с именем anonymous
+            if login == "anonymous":
+                logger.info(
+                    "User cannot use this name",
+                    login,
+                    extra={"UUID": self._id},
+                )
+                send_error_info_msg(
+                    sock=self._conn_socket,
+                    conn_id=self._id,
+                    flags=0b00000001,
+                    payload="Reserved name".encode(),
+                )
+                return
 
             # Проверяем пользователя на наличие записи в БД.
             # Если запись есть, повторная регистрация запрещена
@@ -275,6 +295,7 @@ class ConnectionHandler(threading.Thread):
                 flags=0b00000001,
                 payload="Registered".encode(),
             )
+            get_server_ui().update_client(self._id.bytes, user=login)
             logger.info("User '%s' successfully registered", extra={"UUID": self._id})
 
         except ProtocolException as err:
@@ -296,6 +317,21 @@ class ConnectionHandler(threading.Thread):
             logger.info(
                 "User '%s' requested authentication", login, extra={"UUID": self._id}
             )
+
+            # Запрещена аутентификация для пользователей с именем anonymous
+            if login == "anonymous":
+                logger.info(
+                    "User cannot use this name",
+                    login,
+                    extra={"UUID": self._id},
+                )
+                send_error_info_msg(
+                    sock=self._conn_socket,
+                    conn_id=self._id,
+                    flags=0b00000001,
+                    payload="Reserved name".encode(),
+                )
+                return
 
             # Проверяем пользователя на наличие записи в БД.
             # Если записи нет, аутентификация запрещена без регистрации
@@ -375,6 +411,7 @@ class ConnectionHandler(threading.Thread):
                 flags=0b00000001,
                 payload="Authenticated".encode(),
             )
+            get_server_ui().update_client(self._id.bytes, user=login)
             logger.info(
                 "User '%s' successfully authenticated", extra={"UUID": self._id}
             )
@@ -392,6 +429,20 @@ class ConnectionHandler(threading.Thread):
         Args:
             message (Message): Сообщение от клиента.
         """
+        # Нельзя работать с файлами, если не пройдена аутентификация
+        if not self._is_authenticated:
+            logger.info(
+                "Client is not authenticated yet",
+                extra={"UUID": self._id},
+            )
+            send_error_info_msg(
+                sock=self._conn_socket,
+                conn_id=self._id,
+                flags=0b00000001,
+                payload="Forbidden".encode(),
+            )
+            return
+
         try:
             # Получаем путь к файлу из сообщения
             filepath = message.payload.decode()
@@ -451,6 +502,8 @@ class ConnectionHandler(threading.Thread):
                     extra={"UUID": self._id, "reply": message.payload},
                 )
                 return
+            
+            get_server_ui().update_client(self._id.bytes, filepath=filepath, progress=0.0)
 
             # Отправляем файл частями и хэш файла в конце
             try:
@@ -462,6 +515,8 @@ class ConnectionHandler(threading.Thread):
                         flags=0b00010001,
                         payload=chunk,
                     )
+                    sent_bytes += len(chunk)
+                    get_server_ui().update_client(self._id.bytes, progress=(sent_bytes/file_size))
                     logger.debug("File chunk sended", extra={"UUID": self._id})
                 
                 # Отправляем хэш файла

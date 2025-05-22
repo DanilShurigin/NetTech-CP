@@ -1,13 +1,29 @@
+import sys
+import threading
+
 from src.config import load_config
 from src.logger import setup_logger
 from src.db import get_user_database
 from src.filesystem import get_filesystem
+from src.ui import get_server_ui
 from src.listener import SrvWorkSocket
 from src.server_exceptions import ServerException
 from src.connection_handler import ConnectionHandler
 
 
 def main() -> None:
+    # Выводим базовый интерфейс
+    print()
+    get_server_ui().print()
+    print("\nPress Ctrl+C to exit\n")
+    sys.stdout.write('\x1b[2A') # Перемещаем курсор на 2 строки вверх
+
+    interface_thread = threading.Thread(
+        target=get_server_ui().run,
+        args=(1),
+    )
+    interface_thread.start()
+
     while True:
         try:
             # Ждём и принимаем соединение
@@ -31,6 +47,7 @@ if __name__ == "__main__":
     # Инициализация компонентов сервера
     users_db = get_user_database(config.db)
     srv_filesystem = get_filesystem(config.shared_folder)
+    srv_ui = get_server_ui()
     srv_socket = SrvWorkSocket("127.0.0.1", config.local_port)
 
     logger.info("Server initialized")
