@@ -31,6 +31,7 @@ class ServerUI:
         Returns:
             str: Полоса загрузки
         """
+        percents = percents*100
         return (
             PROGRESS_BAR_SYMBOLS[-1] * int(percents // 9)
             + PROGRESS_BAR_SYMBOLS[round(percents % 9) if percents < 100 else -1]
@@ -54,7 +55,7 @@ class ServerUI:
     @staticmethod
     def _file_out(filename: str, progress: float) -> str:
         """Вернуть поле `File Transfer` таблицы"""
-        return f" {filename if len(filename)<=18 else '...'+filename[-15:]:<18} |{ServerUI._progress_repr(progress):<12}| {round(progress):>3}% "
+        return f" {filename if len(filename)<=18 else '...'+filename[-15:]:<18} |{ServerUI._progress_repr(progress):<12}| {round(progress*100):>3}% "
 
     def _create_output(self, clients: list) -> str:
         """
