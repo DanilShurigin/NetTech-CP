@@ -27,14 +27,14 @@ class ClientUI(cmd.Cmd):
         args = arg.split()
         if not args:
             error_msg = "Ошибка: укажите имя файла"
-            self.logger.error(error_msg)
+            logger.error(error_msg)
             print(error_msg)
             return
 
         filename = args[0]
         save_as = args[1] if len(args) > 1 else filename
 
-        self.logger.info(f"Запрос на скачивание файла: {filename} -> {save_as}")
+        logger.info(f"Запрос на скачивание файла: {filename} -> {save_as}")
 
         try:
             handler.perform_file_download(filename, save_as)
@@ -50,7 +50,7 @@ class ClientUI(cmd.Cmd):
 
         Использование: register
         """
-        self.logger.info("Registration")
+        logger.info("Registration")
 
         try:
             # Запрашиваем логин и пароль у пользователя
@@ -60,14 +60,14 @@ class ClientUI(cmd.Cmd):
             status = handler.perform_registration(login, password)
             
             if status:
-                self.logger.info("Registered as '%s'", login)
+                logger.info("Registered as '%s'", login)
                 print(f"Registered as {login}")
             else:
-                self.logger.info(f"Not registered")
+                logger.info(f"Not registered")
                 print("Not registered")
 
         except Exception as e:
-            self.logger.exception(f"Failed to register: {str(e)}")
+            logger.exception(f"Failed to register: {str(e)}")
             print(f"Error: {str(e)}")
 
     def do_auth(self, arg: str) -> None:
@@ -76,25 +76,25 @@ class ClientUI(cmd.Cmd):
 
         Использование: auth
         """
-        self.logger.info("Authentication")
+        logger.info("Authentication")
 
         try:
             # Запрашиваем логин и пароль у пользователя
             login = input("Login: ")
             password = input("Password: ")
 
-            status = handler.perform_registration(login, password)
+            status = handler.perform_authentication(login, password)
             
             if status:
-                self.logger.info("Authenticated as '%s'", login)
+                logger.info("Authenticated as '%s'", login)
                 print(f"Authenticated as {login}")
             else:
-                self.logger.info(f"Not authenticated")
+                logger.info(f"Not authenticated")
                 print("Not authenticated")
             
 
         except Exception as e:
-            self.logger.exception(f"Failed to authenticate: {str(e)}")
+            logger.exception(f"Failed to authenticate: {str(e)}")
             print(f"Error: {str(e)}")
 
     def do_exit(self, arg: str) -> bool:
@@ -130,6 +130,7 @@ if __name__ == "__main__":
         print("\n\n")
     except:
         logger.critical("Client fatal error", exc_info=True)
+        raise
 
     # Завершение работы
     if "cl_socket" in locals():

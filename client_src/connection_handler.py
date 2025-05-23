@@ -11,6 +11,7 @@ from lib.protocol import (
     read_register_msg,
     read_authentication_msg,
     read_download_msg,
+
     send_connection_msg,
     send_success_info_msg,
     send_error_info_msg,
@@ -37,7 +38,7 @@ class ConnectionHandler:
         # Отправляем первое сообщение для получения conn_id
         send_connection_msg(
             sock=self._socket,
-            conn_id=b"\x00" * 16,
+            conn_id=None,
             flags=0x00,
             payload=b"",
         )
@@ -96,15 +97,15 @@ class ConnectionHandler:
             bool: `True` - успех, `False` - неудача.
         """
         # Отправляем имя пользователя
-        send_register_msg(self._socket, self._conn_id, 0x00, login.encode())
+        send_authentication_msg(self._socket, self._conn_id, 0x00, login.encode())
         logger.debug("Sent user login")
 
         # Получаем соль
-        message = read_register_msg(self._socket)
+        message = read_authentication_msg(self._socket)
         salt = message.payload
 
         # Формируем хэш из пароля и соли и отправляем на сервер
-        send_register_msg(
+        send_authentication_msg(
             self._socket,
             self._conn_id,
             0x00,
@@ -131,7 +132,10 @@ class ConnectionHandler:
         send_download_msg(self._socket, self._conn_id, 0x00, filepath.encode())
 
         # Получаем размер файла
-        message = read_download_msg(self._socket)
+        message = Protocol.read(self._socket)
+
+        if message.msg_type == MessageType.ERROR:
+            raise ProtocolException(message.payload.decode())
 
         # Проверяем, хватит ли места
         file_size = int(message.payload.decode())

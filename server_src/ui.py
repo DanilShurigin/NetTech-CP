@@ -96,7 +96,7 @@ class ServerUI:
         
         self._clear_previous_output()
         # Пересчитываем высоту таблицы
-        self.table_height = 6# + ((2 * len(clients) - 1) if len(clients) > 0 else 0)
+        self.table_height = 6 + ((2 * len(clients) - 1) if len(clients) > 0 else 0)
         # Выводим новую таблицу
         sys.stdout.write(self._create_output(clients.values()))
         sys.stdout.flush()

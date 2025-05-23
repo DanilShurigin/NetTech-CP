@@ -15,8 +15,7 @@ def main() -> None:
     # Выводим базовый интерфейс
     print()
     get_server_ui().print()
-    print("\nPress Ctrl+C to exit\n")
-    sys.stdout.write('\x1b[3A') # Перемещаем курсор на 3 строки вверх
+    # sys.stdout.write('\x1b[1A') # Перемещаем курсор на 1 строку вверх
 
     interface_thread = threading.Thread(
         target=get_server_ui().run,

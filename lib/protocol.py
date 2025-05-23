@@ -100,7 +100,7 @@ class Protocol:
         header = struct.pack(
             Protocol.HEADER_FORMAT,
             len(msg.payload),
-            msg.conn_id.bytes,
+            msg.conn_id.bytes if msg.conn_id else b"\x00"*16,
             msg.msg_type,
             msg.flags,
         )
