@@ -16,6 +16,14 @@ class ProtocolException(Exception):
     pass
 
 
+class BadMessageType(ProtocolException):
+    """
+    Тип сообщения не сообветствует ожидаемому.
+    """
+
+    pass
+
+
 class MessageType(IntEnum):
     """
     Типы сообщений.
@@ -100,7 +108,7 @@ class Protocol:
         header = struct.pack(
             Protocol.HEADER_FORMAT,
             len(msg.payload),
-            msg.conn_id.bytes if msg.conn_id else b"\x00"*16,
+            msg.conn_id.bytes if msg.conn_id else b"\x00" * 16,
             msg.msg_type,
             msg.flags,
         )
@@ -157,13 +165,18 @@ class Protocol:
             # Формируем сообщение
             msg = Message(conn_id, msg_type, flags, payload)
 
-            logger.debug("Message readed from socket", extra={"message": msg.__repr__()})
-            
+            logger.debug(
+                "Message readed from socket", extra={"message": msg.__repr__()}
+            )
+
             return msg
-        
+
         except (struct.error, IOError) as err:
             logger.error("Message read error", exc_info=True)
             raise ProtocolException("Message read error: %e", err)
+        except ConnectionError as conn_err:
+            logger.error("Message reading failed due to connection error", exc_info=True)
+            raise
 
     @staticmethod
     def send(sock: socket.socket, msg: Message) -> None:
@@ -186,6 +199,9 @@ class Protocol:
         except (struct.error, IOError) as err:
             logger.error("Message send error", exc_info=True)
             raise ProtocolException("Message write error: %e", err)
+        except ConnectionError as conn_err:
+            logger.error("Message sending failed due to connection error", exc_info=True)
+            raise
 
 
 # Методы-сокращения
@@ -210,7 +226,7 @@ def read_connection_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise ProtocolException("Bad message type")
+        raise BadMessageType(f"Expected CONN, received {msg.msg_type}")
 
     return msg
 
@@ -257,7 +273,7 @@ def read_info_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise ProtocolException("Bad message type")
+        raise BadMessageType(f"Expected ERROR|SUCCESS, received {msg.msg_type}")
 
     return msg
 
@@ -325,7 +341,7 @@ def read_register_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise ProtocolException("Bad message type")
+        raise BadMessageType(f"Expected REGISTER, received {msg.msg_type}")
 
     return msg
 
@@ -370,7 +386,7 @@ def read_authentication_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise ProtocolException("Bad message type")
+        raise BadMessageType(f"Expected AUTH, received {msg.msg_type}")
 
     return msg
 
@@ -417,7 +433,7 @@ def read_download_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise ProtocolException("Bad message type")
+        raise BadMessageType(f"Expected DOWNLOAD, received {msg.msg_type}")
 
     return msg
 

@@ -9,7 +9,13 @@ from .db import get_user_database
 from .filesystem import get_filesystem
 from .ui import get_server_ui
 
-from lib.protocol import Protocol, Message, MessageType, ProtocolException
+from lib.protocol import (
+    Protocol,
+    Message,
+    MessageType,
+    ProtocolException,
+    BadMessageType,
+)
 from lib.protocol import (
     read_connection_msg,
     read_info_msg,
@@ -40,9 +46,7 @@ class ConnectionHandler(threading.Thread):
     Обработчик входящего подключения.
     """
 
-    def __init__(
-        self, conn_socket: socket.socket, conn_addr: tuple[str, int]
-    ) -> None:
+    def __init__(self, conn_socket: socket.socket, conn_addr: tuple[str, int]) -> None:
         """
         Инициализировать обработчик.
 
@@ -99,51 +103,10 @@ class ConnectionHandler(threading.Thread):
             # Добавляем клиента в таблицу
             get_server_ui().add_client(self._id.bytes, self._conn_addr, "anonymous")
 
-            # Ожидаем получение сообщения CONN с нулевым полем conn_id
+            # Устанавливаем соединение. Если не удалось, закрываем канал.
+            if not self.connect_client():
+                return
             message = None
-            try:
-                message = read_connection_msg(self._conn_socket)
-            except ProtocolException:
-                logger.info(
-                    "Client does not send initial message", extra={"UUID": self._id}
-                )
-                raise
-
-            # Проверяем, что conn_id действительно нулевой, иначе завершаем соединение ошибкой.
-            if message.conn_id != b"\x00" * 16:
-                send_error_info_msg(
-                    sock=self._conn_socket,
-                    conn_id=self._id,
-                    flags=0b00000001,
-                    payload="Wrong initial message format".encode(),
-                )
-                logger.info(
-                    "Client send wrong formatted initial message",
-                    extra={"UUID": self._id},
-                )
-                return
-
-            # Отправляем сообщение о невозможности подключения, если `is_declined`
-            if self._is_declined:
-                send_error_info_msg(
-                    sock=self._conn_socket,
-                    conn_id=self._id,
-                    flags=0b00000001,
-                    payload="Server is busy".encode(),
-                )
-                logger.info(
-                    "Connection declined due to server business",
-                    extra={"UUID": self._id},
-                )
-                return
-
-            # Отправляем клиенту идентификатор соединения
-            send_connection_msg(
-                sock=self._conn_socket,
-                conn_id=self._id,
-                flags=0b00000001,
-                payload="".encode(),
-            )
 
             # Обрабатываем диалог после установления соединения на уровне протокола
             while True:
@@ -194,16 +157,23 @@ class ConnectionHandler(threading.Thread):
                         payload="Unknown operation".encode(),
                     )
 
-        except ProtocolException:
+        except ConnectionError:
+            logger.error(
+                "Critical connection error", extra={"UUID": self._id}, exc_info=True
+            )
+        except:
             logger.error(
                 "Connection processing error", extra={"UUID": self._id}, exc_info=True
             )
-            send_error_info_msg(
-                sock=self._conn_socket,
-                conn_id=self._id,
-                flags=0b00000001,
-                payload="Internal error".encode(),
-            )
+            try:
+                send_error_info_msg(
+                    sock=self._conn_socket,
+                    conn_id=self._id,
+                    flags=0b00000001,
+                    payload="Internal error".encode(),
+                )
+            except:
+                pass
 
         finally:
             # Avoid a refcycle if the thread is running a function with
@@ -215,6 +185,67 @@ class ConnectionHandler(threading.Thread):
             threads_counter.dec()
 
             logger.info("Connection closed", extra={"UUID": self._id})
+
+    def connect_client(self) -> bool:
+        """
+        Установить соединение с клиентом.
+        """
+        # Ожидаем получение сообщения CONN с нулевым полем conn_id
+        message = None
+        try:
+            message = read_connection_msg(self._conn_socket)
+
+        except BadMessageType:
+            logger.info(
+                "Client sent wrong typed initial message",
+                extra={"UUID": self._id},
+                exc_info=True,
+            )
+            return False
+
+        except ProtocolException:
+            logger.info(
+                "Client does not send initial message", extra={"UUID": self._id}
+            )
+            raise ConnectionError()
+
+        # Проверяем, что conn_id действительно нулевой, иначе завершаем соединение ошибкой.
+        if message.conn_id != b"\x00" * 16:
+            send_error_info_msg(
+                sock=self._conn_socket,
+                conn_id=self._id,
+                flags=0b00000001,
+                payload="Wrong initial message format".encode(),
+            )
+            logger.info(
+                "Client send wrong formatted initial message",
+                extra={"UUID": self._id},
+            )
+            return False
+
+        # Отправляем сообщение о невозможности подключения, если `is_declined`
+        if self._is_declined:
+            send_error_info_msg(
+                sock=self._conn_socket,
+                conn_id=self._id,
+                flags=0b00000001,
+                payload="Server is busy".encode(),
+            )
+            logger.info(
+                "Connection declined due to server business",
+                extra={"UUID": self._id},
+            )
+            return False
+
+        # Отправляем клиенту идентификатор соединения
+        send_connection_msg(
+            sock=self._conn_socket,
+            conn_id=self._id,
+            flags=0b00000001,
+            payload="".encode(),
+        )
+
+        return True
 
     def register_client(self, message: Message) -> None:
         """
@@ -234,7 +265,6 @@ class ConnectionHandler(threading.Thread):
             if login == "anonymous":
                 logger.info(
                     "User cannot use this name",
-                    login,
                     extra={"UUID": self._id},
                 )
                 send_error_info_msg(
@@ -242,6 +272,17 @@ class ConnectionHandler(threading.Thread):
                     conn_id=self._id,
                     flags=0b00000001,
                     payload="Reserved name".encode(),
+                )
+                return
+
+            # Если пользователь уже аутентифицирован, отправляем успех
+            if self._is_authenticated:
+                logger.info("User already authenticated", extra={"UUID": self._id})
+                send_success_info_msg(
+                    sock=self._conn_socket,
+                    conn_id=self._id,
+                    flags=0x01,
+                    payload="Authenticated",
                 )
                 return
 
@@ -269,13 +310,13 @@ class ConnectionHandler(threading.Thread):
                 flags=0b00000001,
                 payload=salt,
             )
-            logger.debug("SALT sended to client", extra={"UUID": self._id})
+            logger.debug("SALT sent to client", extra={"UUID": self._id})
 
             # Получаем от клиента "посоленный" хэш пароля
             message = read_register_msg(sock=self._conn_socket)
             passwd_hash = message.payload
             logger.debug(
-                "Received password hash for user '%s'", login, extra={"UUID": self._id}
+                "Password hash received for user '%s'", login, extra={"UUID": self._id}
             )
 
             # Сохраняем нового пользователя в БД
@@ -294,10 +335,19 @@ class ConnectionHandler(threading.Thread):
                 sock=self._conn_socket,
                 conn_id=self._id,
                 flags=0b00000001,
-                payload="Registered".encode(),
+                payload="Authenticated".encode(),
             )
             get_server_ui().update_client(self._id.bytes, user=login)
             logger.info("User '%s' successfully registered", extra={"UUID": self._id})
+
+        except BadMessageType:
+            logger.info(
+                "Client sent wrong typed message",
+                extra={"UUID": self._id},
+                exc_info=True,
+            )
+            send_error_info_msg(self._conn_socket, self._id, 0x01, b"Bad message type")
+            return
 
         except ProtocolException as err:
             logger.error(
@@ -331,6 +381,17 @@ class ConnectionHandler(threading.Thread):
                     conn_id=self._id,
                     flags=0b00000001,
                     payload="Reserved name".encode(),
+                )
+                return
+            
+            # Если пользователь уже аутентифицирован, отправляем успех
+            if self._is_authenticated:
+                logger.info("User already authenticated", extra={"UUID": self._id})
+                send_success_info_msg(
+                    sock=self._conn_socket,
+                    conn_id=self._id,
+                    flags=0x01,
+                    payload="Authenticated",
                 )
                 return
 
@@ -371,13 +432,13 @@ class ConnectionHandler(threading.Thread):
                 flags=0b00000001,
                 payload=salt,
             )
-            logger.debug("SALT sended to client", extra={"UUID": self._id})
+            logger.debug("SALT sent to client", extra={"UUID": self._id})
 
             # Получаем от клиента "посоленный" хэш пароля
             message = read_register_msg(sock=self._conn_socket)
             passwd_hash = message.payload
             logger.debug(
-                "Received password hash for user '%s'", login, extra={"UUID": self._id}
+                "Password hash received for user '%s'", login, extra={"UUID": self._id}
             )
 
             # Получаем из БД хэшированный пароль клиента
@@ -402,7 +463,7 @@ class ConnectionHandler(threading.Thread):
                     flags=0b00000001,
                     payload="Not authenticated".encode(),
                 )
-                logger.error("Authentication failed", extra={"UUID": self._id})
+                logger.error("Not authenticated", extra={"UUID": self._id})
                 return
 
             self._is_authenticated = True
@@ -416,7 +477,16 @@ class ConnectionHandler(threading.Thread):
             logger.info(
                 "User '%s' successfully authenticated", extra={"UUID": self._id}
             )
-
+        
+        except BadMessageType:
+            logger.info(
+                "Client sent wrong typed message",
+                extra={"UUID": self._id},
+                exc_info=True,
+            )
+            send_error_info_msg(self._conn_socket, self._id, 0x01, b"Bad message type")
+            return
+        
         except ProtocolException as err:
             logger.error(
                 "Unable to authenticate client", extra={"UUID": self._id}, exc_info=True
@@ -430,21 +500,22 @@ class ConnectionHandler(threading.Thread):
         Args:
             message (Message): Сообщение от клиента.
         """
-        # Нельзя работать с файлами, если не пройдена аутентификация
-        if not self._is_authenticated:
-            logger.info(
-                "Client is not authenticated yet",
-                extra={"UUID": self._id},
-            )
-            send_error_info_msg(
-                sock=self._conn_socket,
-                conn_id=self._id,
-                flags=0b00000001,
-                payload="Forbidden".encode(),
-            )
-            return
 
         try:
+            # Нельзя работать с файлами, если не пройдена аутентификация
+            if not self._is_authenticated:
+                logger.info(
+                    "Client is not authenticated yet",
+                    extra={"UUID": self._id},
+                )
+                send_error_info_msg(
+                    sock=self._conn_socket,
+                    conn_id=self._id,
+                    flags=0b00000001,
+                    payload="Not authorized".encode(),
+                )
+                return
+            
             # Получаем путь к файлу из сообщения
             filepath = message.payload.decode()
             logger.info(
@@ -482,10 +553,10 @@ class ConnectionHandler(threading.Thread):
                     sock=self._conn_socket,
                     conn_id=self._id,
                     flags=0b00000001,
-                    payload="File does not exists".encode(),
+                    payload="Not exists".encode(),
                 )
                 return
-            
+
             # Отправляем клиенту размер файла
             send_download_msg(
                 sock=self._conn_socket,
@@ -503,13 +574,17 @@ class ConnectionHandler(threading.Thread):
                     extra={"UUID": self._id, "reply": message.payload},
                 )
                 return
-            
-            get_server_ui().update_client(self._id.bytes, filepath=filepath, progress=0.0)
+
+            get_server_ui().update_client(
+                self._id.bytes, filepath=filepath, progress=0.0
+            )
 
             # Отправляем файл частями и хэш файла в конце
             try:
                 sent_bytes = 0
-                for chunk in get_filesystem().read_file_in_chunks(filepath, FILE_CHUNK_SIZE):
+                for chunk in get_filesystem().read_file_in_chunks(
+                    filepath, FILE_CHUNK_SIZE
+                ):
                     send_download_msg(
                         sock=self._conn_socket,
                         conn_id=self._id,
@@ -517,18 +592,23 @@ class ConnectionHandler(threading.Thread):
                         payload=chunk,
                     )
                     sent_bytes += len(chunk)
-                    get_server_ui().update_client(self._id.bytes, progress=(sent_bytes/file_size))
-                    logger.debug("File chunk sended", extra={"UUID": self._id})
-                
+                    get_server_ui().update_client(
+                        self._id.bytes, progress=(sent_bytes / file_size)
+                    )
+                    logger.debug("File chunk sended", extra={"UUID": self._id, "progress": (sent_bytes / file_size)})
+
                 # Отправляем хэш файла
                 file_hash = get_filesystem().calc_file_hash(filepath)
                 send_download_msg(
                     sock=self._conn_socket,
                     conn_id=self._id,
-                    flags=0b00010001,
+                    flags=0b00000001,
                     payload=file_hash,
                 )
-                logger.debug("File hash sended", extra={"UUID": self._id, "hash": file_hash.hex()})
+                logger.debug(
+                    "File hash sended",
+                    extra={"UUID": self._id, "hash": file_hash.hex()},
+                )
 
             except IOError as io_err:
                 logger.error(
@@ -543,9 +623,18 @@ class ConnectionHandler(threading.Thread):
                     payload="Unable to interact with file".encode(),
                 )
                 raise ProtocolException("Unable to interact with file")
-            
+
             logger.info("File transfer completed", extra={"UUID": self._id})
 
+        except BadMessageType:
+            logger.info(
+                "Client sent wrong typed message",
+                extra={"UUID": self._id},
+                exc_info=True,
+            )
+            send_error_info_msg(self._conn_socket, self._id, 0x01, b"Bad message type")
+            return
+        
         except ProtocolException as err:
             logger.error(
                 "Unable to upload file to client",
