@@ -60,7 +60,7 @@ class FileSystem:
         Raises:
             IOError: Не удалось вычислить хэш для файла
         """
-        filepath = self.clear_filepath(filepath)
+        filepath = Path(self._dir).joinpath(self.clear_filepath(filepath))
 
         sha256 = hashlib.sha256()
         try:
@@ -89,7 +89,7 @@ class FileSystem:
         Returns:
             int: Размер файла в байтах
         """
-        filepath = self.clear_filepath(filepath)
+        filepath = Path(self._dir).joinpath(self.clear_filepath(filepath))
 
         return Path(filepath).stat().st_size
 
@@ -107,7 +107,7 @@ class FileSystem:
         Rises:
             IOError: Не удалось прочитать файл
         """
-        filepath = self.clear_filepath(filepath)
+        filepath = Path(self._dir).joinpath(self.clear_filepath(filepath))
 
         try:
             with open(filepath, "rb") as f:

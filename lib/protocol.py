@@ -43,7 +43,11 @@ class Message:
     """
 
     def __init__(
-        self, conn_id: uuid.UUID, msg_type: MessageType, flags: int, payload: bytes
+        self,
+        conn_id: uuid.UUID | bytes,
+        msg_type: MessageType,
+        flags: int,
+        payload: bytes,
     ):
         """
         Инициализировать сообщение протокола.
@@ -54,7 +58,10 @@ class Message:
             flags (int): Управляющие биты
             payload (bytes): Полезная нагрузка
         """
-        self._conn_id = conn_id
+        if isinstance(conn_id, uuid.UUID):
+            self._conn_id = conn_id
+        else:
+            self._conn_id = uuid.UUID(bytes=conn_id)
         self._msg_type = msg_type
         self._flags = flags
         self._payload = payload
@@ -108,7 +115,7 @@ class Protocol:
         header = struct.pack(
             Protocol.HEADER_FORMAT,
             len(msg.payload),
-            msg.conn_id.bytes if msg.conn_id else b"\x00" * 16,
+            msg.conn_id.bytes,
             msg.msg_type,
             msg.flags,
         )
@@ -129,6 +136,18 @@ class Protocol:
         payload_length, conn_id, msg_type, flags = struct.unpack(
             Protocol.HEADER_FORMAT,
             header_data,
+        )
+
+        logger.debug(
+            "Unpacked header",
+            extra={
+                "header": {
+                    "payload_length": payload_length,
+                    "conn_id": conn_id,
+                    "msg_type": MessageType(msg_type).name,
+                    "flags": bin(flags)[2:].zfill(8),
+                }
+            },
         )
 
         return payload_length, conn_id, msg_type, flags
@@ -159,23 +178,31 @@ class Protocol:
             payload = b""
             # Читаем из сокета полезную нагрузку, если такая есть
             if payload_length > 0:
-                payload = sock.recv(payload_length)
+                remaining = payload_length
+                while remaining > 0:
+                    chunk = sock.recv(min(remaining, 4096))  # Read in chunks
+                    if not chunk:
+                        raise IOError(f"Connection closed prematurely. Expected {payload_length} bytes, received {len(payload)} bytes")
+                    payload += chunk
+                    remaining -= len(chunk)
                 if len(payload) != payload_length:
-                    raise IOError("Unable to read payload")
+                    raise IOError(f"Unable to read payload: expected {payload_length} bytes, received {len(payload)} bytes")
             # Формируем сообщение
             msg = Message(conn_id, msg_type, flags, payload)
 
             logger.debug(
-                "Message readed from socket", extra={"message": msg.__repr__()}
+                "Message read from socket", extra={"protocol_message": msg.__repr__()}
             )
 
             return msg
 
         except (struct.error, IOError) as err:
             logger.error("Message read error", exc_info=True)
-            raise ProtocolException("Message read error: %e", err)
+            raise ProtocolException(f"Message read error: {err}")
         except ConnectionError as conn_err:
-            logger.error("Message reading failed due to connection error", exc_info=True)
+            logger.error(
+                "Message reading failed due to connection error", exc_info=True
+            )
             raise
 
     @staticmethod
@@ -191,7 +218,7 @@ class Protocol:
             ProtocolException: Не удалось отправить сообщение.
         """
         try:
-            logger.debug("Sending message to socket", extra={"message": msg.__repr__()})
+            logger.debug("Sending message to socket", extra={"protocol_message": msg.__repr__()})
             # Формируем поток байт из полей сообщения
             message = Protocol.pack_message(msg)
             # Отправляем сообщение в сокет
@@ -200,7 +227,9 @@ class Protocol:
             logger.error("Message send error", exc_info=True)
             raise ProtocolException("Message write error: %e", err)
         except ConnectionError as conn_err:
-            logger.error("Message sending failed due to connection error", exc_info=True)
+            logger.error(
+                "Message sending failed due to connection error", exc_info=True
+            )
             raise
 
 
@@ -226,7 +255,9 @@ def read_connection_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise BadMessageType(f"Expected CONN, received {msg.msg_type}")
+        raise BadMessageType(
+            f"Expected CONN, received {MessageType(msg.msg_type).name}: {msg.payload.decode()}"
+        )
 
     return msg
 
@@ -246,7 +277,10 @@ def send_connection_msg(
     logger.info("Sending CONN message to socket", extra={"socket": sock.__repr__()})
     # Создаём сообщение
     msg = Message(
-        conn_id=conn_id, msg_type=MessageType.CONN, flags=flags, payload=payload
+        conn_id=conn_id or b"\x00" * 16,
+        msg_type=MessageType.CONN,
+        flags=flags,
+        payload=payload,
     )
     # Отправляем сообщение
     Protocol.send(sock=sock, msg=msg)
@@ -273,7 +307,9 @@ def read_info_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise BadMessageType(f"Expected ERROR|SUCCESS, received {msg.msg_type}")
+        raise BadMessageType(
+            f"Expected ERROR|SUCCESS, received {MessageType(msg.msg_type).name}: {msg.payload.decode()}"
+        )
 
     return msg
 
@@ -341,7 +377,9 @@ def read_register_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise BadMessageType(f"Expected REGISTER, received {msg.msg_type}")
+        raise BadMessageType(
+            f"Expected REGISTER, received {MessageType(msg.msg_type).name}: {msg.payload.decode()}"
+        )
 
     return msg
 
@@ -386,7 +424,9 @@ def read_authentication_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise BadMessageType(f"Expected AUTH, received {msg.msg_type}")
+        raise BadMessageType(
+            f"Expected AUTH, received {MessageType(msg.msg_type).name}: {msg.payload.decode()}"
+        )
 
     return msg
 
@@ -433,7 +473,9 @@ def read_download_msg(sock: socket.socket) -> Message:
             "Readed message contains wrong type",
             extra={"socket": sock.__repr__(), "msg_type": msg.msg_type},
         )
-        raise BadMessageType(f"Expected DOWNLOAD, received {msg.msg_type}")
+        raise BadMessageType(
+            f"Expected DOWNLOAD, received {MessageType(msg.msg_type).name}: {msg.payload.decode()}"
+        )
 
     return msg
 

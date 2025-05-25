@@ -20,6 +20,14 @@ def setup_logger(log_file: str, log_level: str = "info") -> logging.Logger:
                 "level": log_level.upper(),
                 "handlers": ["file"],
             },
+            "server.conn_handler": {
+                "level": log_level.upper(),
+                "handlers": [],
+            },
+            "protocol": {
+                "level": "DEBUG",
+                "handlers": [],
+            },
         },
         "handlers": {
             "console": {

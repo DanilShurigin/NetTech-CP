@@ -63,7 +63,7 @@ class UserDatabase:
                 conn.execute(
                     """
                     INSERT INTO users (login, salt, passwd_hash)
-                    VALUE (?, ?, ?)
+                    VALUES (?, ?, ?)
                     """,
                     (login, salt, passwd_hash),
                 )

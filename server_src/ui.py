@@ -33,8 +33,8 @@ class ServerUI:
         """
         percents = percents*100
         return (
-            PROGRESS_BAR_SYMBOLS[-1] * int(percents // 9)
-            + PROGRESS_BAR_SYMBOLS[round(percents % 9) if percents < 100 else -1]
+            PROGRESS_BAR_SYMBOLS[-1] * (round(percents) // 9)
+            + PROGRESS_BAR_SYMBOLS[(round(percents) % 9) if percents < 100 else -1]
         )
 
     @staticmethod
@@ -127,7 +127,7 @@ class ServerUI:
         """Обновить данные клиента в таблице"""
         with self.lock:
             self.clients[conn_id]["user"] = user or self.clients[conn_id]["user"]
-            self.clients[conn_id]["filepath"] = filepath or self.clients[conn_id]["filepath"]
+            self.clients[conn_id]["file"] = filepath or self.clients[conn_id]["file"]
             self.clients[conn_id]["progress"] = progress or self.clients[conn_id]["progress"]
 
 

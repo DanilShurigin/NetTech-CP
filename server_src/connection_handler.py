@@ -123,9 +123,9 @@ class ConnectionHandler(threading.Thread):
                     raise
 
                 # Проверяем соответствие conn_id в запросе с id соединения
-                if message.conn_id != self._id.bytes:
+                if message.conn_id != self._id:
                     logger.info(
-                        "Wrong conn_id in received message", extra={"UUID": self._id}
+                        "Wrong conn_id in received message", extra={"UUID": self._id, "conn_id": message.conn_id}
                     )
                     send_error_info_msg(
                         sock=self._conn_socket,
@@ -210,7 +210,7 @@ class ConnectionHandler(threading.Thread):
             raise ConnectionError()
 
         # Проверяем, что conn_id действительно нулевой, иначе завершаем соединение ошибкой.
-        if message.conn_id != b"\x00" * 16:
+        if message.conn_id.bytes != b"\x00" * 16:
             send_error_info_msg(
                 sock=self._conn_socket,
                 conn_id=self._id,
@@ -244,6 +244,8 @@ class ConnectionHandler(threading.Thread):
             flags=0b00000001,
             payload="".encode(),
         )
+
+        logger.debug("Connection ID sent", extra={"UUID": self._id})
 
         return True
 
@@ -282,7 +284,7 @@ class ConnectionHandler(threading.Thread):
                     sock=self._conn_socket,
                     conn_id=self._id,
                     flags=0x01,
-                    payload="Authenticated",
+                    payload="Authenticated".encode(),
                 )
                 return
 
@@ -391,7 +393,7 @@ class ConnectionHandler(threading.Thread):
                     sock=self._conn_socket,
                     conn_id=self._id,
                     flags=0x01,
-                    payload="Authenticated",
+                    payload="Authenticated".encode(),
                 )
                 return
 
@@ -426,7 +428,7 @@ class ConnectionHandler(threading.Thread):
                 return
 
             # Отправляем соль клиенту
-            send_register_msg(
+            send_authentication_msg(
                 sock=self._conn_socket,
                 conn_id=self._id,
                 flags=0b00000001,
@@ -435,7 +437,7 @@ class ConnectionHandler(threading.Thread):
             logger.debug("SALT sent to client", extra={"UUID": self._id})
 
             # Получаем от клиента "посоленный" хэш пароля
-            message = read_register_msg(sock=self._conn_socket)
+            message = read_authentication_msg(sock=self._conn_socket)
             passwd_hash = message.payload
             logger.debug(
                 "Password hash received for user '%s'", login, extra={"UUID": self._id}
@@ -642,3 +644,6 @@ class ConnectionHandler(threading.Thread):
                 exc_info=True,
             )
             return
+        
+        finally:
+            get_server_ui().update_client(self._id.bytes, filepath=None, progress=0.0)

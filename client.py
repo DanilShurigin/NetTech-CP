@@ -1,10 +1,12 @@
 import cmd
 import hashlib
 import socket
+import os
 
 from client_src.config import load_config
 from client_src.logger import setup_logger
 from client_src.connection_handler import ConnectionHandler
+from lib.protocol import BadMessageType
 
 
 class ClientUI(cmd.Cmd):
@@ -26,7 +28,7 @@ class ClientUI(cmd.Cmd):
         """
         args = arg.split()
         if not args:
-            error_msg = "Ошибка: укажите имя файла"
+            error_msg = "Error: Empty filename"
             logger.error(error_msg)
             print(error_msg)
             return
@@ -34,13 +36,15 @@ class ClientUI(cmd.Cmd):
         filename = args[0]
         save_as = args[1] if len(args) > 1 else filename
 
-        logger.info(f"Запрос на скачивание файла: {filename} -> {save_as}")
+        logger.info(f"File downloading request: {filename} -> {save_as}")
 
         try:
             handler.perform_file_download(filename, save_as)
+            abs_path = os.path.abspath(save_as)
+            print(f"File \033]8;;file://{abs_path}\033\\{abs_path}\033]8;;\033\\ downloaded")
         except Exception as e:
-            logger.exception(f"Ошибка при выполнении команды download: {str(e)}")
-            print(f"Ошибка: {str(e)}")
+            logger.error(f"Downloading error", exc_info=True)
+            print(f"Error: {str(e)}")
 
         print()  # Новая строка после прогресс-бара
 
@@ -128,9 +132,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Client shutdown initiated by keyboard interrupt")
         print("\n\n")
-    except:
+    except Exception as err:
         logger.critical("Client fatal error", exc_info=True)
-        raise
+        print(f"Critical error: {err.args[0]}")
 
     # Завершение работы
     if "cl_socket" in locals():
